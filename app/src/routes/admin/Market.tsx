@@ -36,7 +36,6 @@ import { Switch } from "@/components/ui/switch.tsx";
 import { Toggle } from "@/components/ui/toggle.tsx";
 import { deprecatedModelImages, marketEditableTags } from "@/admin/market.ts";
 import { Button, UploadFileButton } from "@/components/ui/button.tsx";
-import { Combobox } from "@/components/ui/combo-box.tsx";
 import { cn } from "@/components/ui/lib/utils.ts";
 import PopupDialog, { popupTypes } from "@/components/PopupDialog.tsx";
 import {
@@ -461,7 +460,6 @@ type MarketItemProps = React.DetailedHTMLProps<
   dispatch: Dispatch<any>;
   index: number;
   stacked: boolean;
-  channelModels: string[];
   forwardRef?: React.Ref<HTMLDivElement>;
 };
 
@@ -471,7 +469,6 @@ function MarketItem({
   stacked,
   dispatch,
   index,
-  channelModels,
   forwardRef,
   ...props
 }: MarketItemProps) {
@@ -591,16 +588,18 @@ function MarketItem({
           </div>
           <div className={`market-row md:!flex-nowrap`}>
             <span>{t("admin.market.model-id")}</span>
-            <Combobox
+            <Input
               value={model.id}
-              onChange={(id: string) => {
+              onChange={(e) => {
                 dispatch({
                   type: "update-id",
-                  payload: { idx: index, id },
+                  payload: {
+                    idx: index,
+                    id: e.target.value,
+                  },
                 });
               }}
               className={`model-combobox`}
-              list={channelModels}
               placeholder={t("admin.market.model-id-placeholder")}
             />
           </div>
@@ -781,14 +780,12 @@ type MarketGroupProps = {
   form: MarketForm;
   dispatch: Dispatch<any>;
   stacked: boolean;
-  channelModels: string[];
 };
 
 function MarketGroup({
   form,
   dispatch,
   stacked,
-  channelModels,
 }: MarketGroupProps) {
   return form.map((model, index) => (
     <Draggable
@@ -804,7 +801,6 @@ function MarketGroup({
           stacked={stacked}
           dispatch={dispatch}
           index={index}
-          channelModels={channelModels}
           forwardRef={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
@@ -1013,7 +1009,6 @@ function Market() {
 
   const {
     allModels,
-    channelModels,
     update: updateAllModels,
   } = useChannelModels((state) => setStepAll(!state));
 
@@ -1174,7 +1169,6 @@ function Market() {
                       form={form}
                       dispatch={dispatch}
                       stacked={stacked}
-                      channelModels={channelModels}
                     />
                   ) : (
                     <p className={`align-center text-sm empty`}>
@@ -1207,3 +1201,4 @@ function Market() {
 }
 
 export default Market;
+
