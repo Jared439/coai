@@ -86,12 +86,37 @@ func (b *Buffer) GetCursor() int {
 }
 
 func (b *Buffer) GetQuota() float32 {
-	return b.Quota + CountOutputToken(b.Charge, b.CountOutputToken(true))
+	inputMultiplier, outputMultiplier := b.getTokenBillingMultipliers()
+
+	return b.Quota*inputMultiplier +
+		CountOutputToken(
+			b.Charge,
+			b.CountOutputToken(true),
+		)*outputMultiplier
 }
 
 func (b *Buffer) GetRecordQuota() float32 {
-	// end of the buffer, the output token is counted using the times
-	return b.Quota + CountOutputToken(b.Charge, b.CountOutputToken(false))
+	inputMultiplier, outputMultiplier := b.getTokenBillingMultipliers()
+
+	return b.Quota*inputMultiplier +
+		CountOutputToken(
+			b.Charge,
+			b.CountOutputToken(false),
+		)*outputMultiplier
+}
+
+func (b *Buffer) getTokenBillingMultipliers() (
+	input float32,
+	output float32,
+) {
+	if !b.Charge.IsBillingType(globals.TokenBilling) {
+		return 1, 1
+	}
+
+	return GetTokenBillingMultipliers(
+		b.Model,
+		b.InputTokens,
+	)
 }
 
 func (b *Buffer) Write(data string) string {
@@ -99,6 +124,7 @@ func (b *Buffer) Write(data string) string {
 	b.Cursor += len(data)
 	b.Times++
 	b.Latest = data
+
 	return data
 }
 
@@ -119,7 +145,6 @@ func (b *Buffer) GetChunk() string {
 }
 
 func (b *Buffer) InitVisionRecall() {
-	// set the vision recall flag to true to prevent the buffer from adding more images of retrying the channel
 	b.VisionRecall = true
 }
 
@@ -146,7 +171,10 @@ func (b *Buffer) SetToolCalls(toolCalls *globals.ToolCalls) {
 	b.ToolCalls = toolCalls
 }
 
-func hitTool(tool globals.ToolCall, tools globals.ToolCalls) (int, *globals.ToolCall) {
+func hitTool(
+	tool globals.ToolCall,
+	tools globals.ToolCalls,
+) (int, *globals.ToolCall) {
 	for i, t := range tools {
 		if t.Id == tool.Id {
 			return i, &t
@@ -157,7 +185,6 @@ func hitTool(tool globals.ToolCall, tools globals.ToolCalls) (int, *globals.Tool
 		length := len(tools)
 
 		if length > 0 {
-			// if the tool is empty, return the last tool as the hit
 			return length - 1, &tools[length-1]
 		}
 	}
@@ -165,14 +192,20 @@ func hitTool(tool globals.ToolCall, tools globals.ToolCalls) (int, *globals.Tool
 	return 0, nil
 }
 
-func appendTool(tool globals.ToolCall, chunk globals.ToolCall) string {
+func appendTool(
+	tool globals.ToolCall,
+	chunk globals.ToolCall,
+) string {
 	from := ToString(tool.Function.Arguments)
 	to := ToString(chunk.Function.Arguments)
 
 	return from + to
 }
 
-func mixTools(source *globals.ToolCalls, target *globals.ToolCalls) *globals.ToolCalls {
+func mixTools(
+	source *globals.ToolCalls,
+	target *globals.ToolCalls,
+) *globals.ToolCalls {
 	if source == nil {
 		return target
 	}
@@ -184,7 +217,10 @@ func mixTools(source *globals.ToolCalls, target *globals.ToolCalls) *globals.Too
 		idx, hit := hitTool(tool, tools)
 
 		if hit != nil {
-			tools[idx].Function.Arguments = appendTool(tools[idx], tool)
+			tools[idx].Function.Arguments = appendTool(
+				tools[idx],
+				tool,
+			)
 		} else {
 			tools = append(tools, tool)
 		}
@@ -198,10 +234,15 @@ func (b *Buffer) AddToolCalls(toolCalls *globals.ToolCalls) {
 		return
 	}
 
-	b.ToolCalls = mixTools(b.ToolCalls, toolCalls)
+	b.ToolCalls = mixTools(
+		b.ToolCalls,
+		toolCalls,
+	)
 }
 
-func (b *Buffer) SetFunctionCall(functionCall *globals.FunctionCall) {
+func (b *Buffer) SetFunctionCall(
+	functionCall *globals.FunctionCall,
+) {
 	if functionCall == nil {
 		return
 	}
@@ -242,10 +283,16 @@ func (b *Buffer) ToChargeInfo() string {
 		return fmt.Sprintf(
 			"input tokens: %0.4f quota / 1k tokens\n"+
 				"output tokens: %0.4f quota / 1k tokens\n",
-			b.Charge.GetInput(), b.Charge.GetOutput(),
+			b.Charge.GetInput(),
+			b.Charge.GetOutput(),
 		)
+
 	case globals.TimesBilling:
-		return fmt.Sprintf("%f quota per request\n", b.Charge.GetLimit())
+		return fmt.Sprintf(
+			"%f quota per request\n",
+			b.Charge.GetLimit(),
+		)
+
 	case globals.NonBilling:
 		return "no cost"
 	}
@@ -266,9 +313,12 @@ func (b *Buffer) ReadBytes() []byte {
 }
 
 func (b *Buffer) ReadWithDefault(_default string) string {
-	if b.IsEmpty() || (len(strings.TrimSpace(b.Data)) == 0 && !b.IsFunctionCalling()) {
+	if b.IsEmpty() ||
+		(len(strings.TrimSpace(b.Data)) == 0 &&
+			!b.IsFunctionCalling()) {
 		return _default
 	}
+
 	return b.Data
 }
 
@@ -278,6 +328,15 @@ func (b *Buffer) ReadTimes() int {
 
 func (b *Buffer) SetInputTokens(tokens int) {
 	b.InputTokens = tokens
+
+	if b.Charge.IsBillingType(globals.TokenBilling) {
+		// Quota stores the normal base input cost.
+		// GetQuota applies the long-context multiplier later.
+		b.Quota = CountInputQuota(
+			b.Charge,
+			tokens,
+		)
+	}
 }
 
 func (b *Buffer) CountInputToken() int {
@@ -286,16 +345,18 @@ func (b *Buffer) CountInputToken() int {
 
 func (b *Buffer) CountOutputToken(running bool) int {
 	if running {
-		// performance optimization:
-		// if the buffer is still running, the output token counted using the times instead
 		return b.Times
 	}
 
-	return NumTokensFromResponse(b.Read(), b.Model)
+	return NumTokensFromResponse(
+		b.Read(),
+		b.Model,
+	)
 }
 
 func (b *Buffer) CountToken() int {
-	return b.CountInputToken() + b.CountOutputToken(true)
+	return b.CountInputToken() +
+		b.CountOutputToken(true)
 }
 
 func (b *Buffer) GetDuration() float32 {
@@ -303,7 +364,9 @@ func (b *Buffer) GetDuration() float32 {
 		return 0
 	}
 
-	return float32(time.Since(*b.StartTime).Seconds())
+	return float32(
+		time.Since(*b.StartTime).Seconds(),
+	)
 }
 
 func (b *Buffer) GetStartTime() *time.Time {
