@@ -42,6 +42,7 @@ func (c *ChatInstance) ConvertCompletionMessage(message []globals.Message) strin
 
 		result += fmt.Sprintf("\n\n%s: %s", mapper[item.Role], item.Content)
 	}
+
 	return fmt.Sprintf("%s\n\nAssistant:", result)
 }
 
@@ -54,9 +55,9 @@ func (c *ChatInstance) GetTokens(props *adaptercommon.ChatProps) int {
 }
 
 func (c *ChatInstance) ConvertMessages(props *adaptercommon.ChatProps) []globals.Message {
-	// anthropic api: top message must be user message, only `user` and `assistant` role messages are allowd
+	// Anthropic API requires the first message to be a user message.
+	// Only user and assistant roles are allowed in the messages array.
 	start := false
-
 	result := make([]globals.Message, 0)
 
 	for _, message := range props.Message {
@@ -64,7 +65,7 @@ func (c *ChatInstance) ConvertMessages(props *adaptercommon.ChatProps) []globals
 			continue
 		}
 
-		// if is first message, set it to user message
+		// Convert the first non-system message to a user message.
 		if !start {
 			start = true
 			result = append(result, globals.Message{
@@ -74,7 +75,7 @@ func (c *ChatInstance) ConvertMessages(props *adaptercommon.ChatProps) []globals
 			continue
 		}
 
-		// anthropic api does not allow multi-same role messages
+		// Anthropic does not allow consecutive messages with the same role.
 		if len(result) > 0 && result[len(result)-1].Role == message.Role {
 			result[len(result)-1].Content += "\n" + message.Content
 			continue
@@ -88,6 +89,7 @@ func (c *ChatInstance) ConvertMessages(props *adaptercommon.ChatProps) []globals
 
 func (c *ChatInstance) GetMessages(props *adaptercommon.ChatProps) []Message {
 	converted := c.ConvertMessages(props)
+
 	return utils.Each(converted, func(message globals.Message) Message {
 		if !globals.IsVisionModel(props.Model) || message.Role != globals.User {
 			return Message{
@@ -97,14 +99,21 @@ func (c *ChatInstance) GetMessages(props *adaptercommon.ChatProps) []Message {
 		}
 
 		content, urls := utils.ExtractImages(message.Content, true)
+
 		images := utils.EachNotNil(urls, func(url string) *MessageContent {
 			obj, err := utils.NewImage(url)
 			props.Buffer.AddImage(obj)
+
 			if err != nil {
-				globals.Info(fmt.Sprintf("cannot process image: %s (source: %s)", err.Error(), utils.Extract(url, 24, "...")))
+				globals.Info(fmt.Sprintf(
+					"cannot process image: %s (source: %s)",
+					err.Error(),
+					utils.Extract(url, 24, "..."),
+				))
 			}
 
 			i := utils.NewImageContent(url)
+
 			return &MessageContent{
 				Type: "image",
 				Source: &MessageImage{
@@ -125,30 +134,39 @@ func (c *ChatInstance) GetMessages(props *adaptercommon.ChatProps) []Message {
 	})
 }
 
-func (c *ChatInstance) GetSystemPrompt(props *adaptercommon.ChatProps) (prompt string) {
+func (c *ChatInstance) GetSystemPrompt(
+	props *adaptercommon.ChatProps,
+) (prompt string) {
 	for _, message := range props.Message {
 		if message.Role == globals.System {
 			prompt += message.Content
 		}
 	}
+
 	return
 }
 
-func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) *ChatBody {
+func (c *ChatInstance) GetChatBody(
+	props *adaptercommon.ChatProps,
+	stream bool,
+) *ChatBody {
 	messages := c.GetMessages(props)
+
 	return &ChatBody{
-		Messages:    messages,
-		MaxTokens:   c.GetTokens(props),
-		Model:       props.Model,
-		System:      c.GetSystemPrompt(props),
-		Stream:      stream,
-		Temperature: props.Temperature,
-		TopP:        props.TopP,
-		TopK:        props.TopK,
+		Messages:  messages,
+		MaxTokens: c.GetTokens(props),
+		Model:     props.Model,
+		System:    c.GetSystemPrompt(props),
+		Stream:    stream,
+
+		// Do not send temperature, top_p, or top_k.
+		// Claude 5 rejects non-default sampling parameters.
 	}
 }
 
-func (c *ChatInstance) ProcessLine(data string) (*globals.Chunk, error) {
+func (c *ChatInstance) ProcessLine(
+	data string,
+) (*globals.Chunk, error) {
 	if form := processChatResponse(data); form != nil {
 		return &globals.Chunk{
 			Content: form.Delta.Text,
@@ -156,7 +174,13 @@ func (c *ChatInstance) ProcessLine(data string) (*globals.Chunk, error) {
 	}
 
 	if form := processChatErrorResponse(data); form != nil {
-		return &globals.Chunk{Content: ""}, fmt.Errorf("anthropic error: %s (type: %s)", form.Error.Message, form.Error.Type)
+		return &globals.Chunk{
+			Content: "",
+		}, fmt.Errorf(
+			"anthropic error: %s (type: %s)",
+			form.Error.Message,
+			form.Error.Type,
+		)
 	}
 
 	return &globals.Chunk{Content: ""}, nil
@@ -166,6 +190,7 @@ func processChatErrorResponse(data string) *ChatErrorResponse {
 	if form := utils.UnmarshalForm[ChatErrorResponse](data); form != nil {
 		return form
 	}
+
 	return nil
 }
 
@@ -173,25 +198,30 @@ func processChatResponse(data string) *ChatStreamResponse {
 	if form := utils.UnmarshalForm[ChatStreamResponse](data); form != nil {
 		return form
 	}
+
 	return nil
 }
 
-// CreateStreamChatRequest is the stream request for anthropic claude
-func (c *ChatInstance) CreateStreamChatRequest(props *adaptercommon.ChatProps, hook globals.Hook) error {
-	err := utils.EventScanner(&utils.EventScannerProps{
-		Method:  "POST",
-		Uri:     c.GetChatEndpoint(),
-		Headers: c.GetChatHeaders(),
-		Body:    c.GetChatBody(props, true),
-		Callback: func(data string) error {
-			partial, err := c.ProcessLine(data)
-			if err != nil {
-				return err
-			}
+// CreateStreamChatRequest is the stream request for Anthropic Claude.
+func (c *ChatInstance) CreateStreamChatRequest(
+	props *adaptercommon.ChatProps,
+	hook globals.Hook,
+) error {
+	err := utils.EventScanner(
+		&utils.EventScannerProps{
+			Method:  "POST",
+			Uri:     c.GetChatEndpoint(),
+			Headers: c.GetChatHeaders(),
+			Body:    c.GetChatBody(props, true),
+			Callback: func(data string) error {
+				partial, err := c.ProcessLine(data)
+				if err != nil {
+					return err
+				}
 
-			return hook(partial)
+				return hook(partial)
+			},
 		},
-	},
 		props.Proxy,
 	)
 
@@ -201,9 +231,18 @@ func (c *ChatInstance) CreateStreamChatRequest(props *adaptercommon.ChatProps, h
 				return errors.New(utils.ToMarkdownCode("json", err.Body))
 			}
 
-			return errors.New(fmt.Sprintf("%s (type: %s)", form.Error.Message, form.Error.Type))
+			return fmt.Errorf(
+				"%s (type: %s)",
+				form.Error.Message,
+				form.Error.Type,
+			)
 		}
-		return fmt.Errorf("%s\n%s", err.Error, errors.New(utils.ToMarkdownCode("json", err.Body)))
+
+		return fmt.Errorf(
+			"%s\n%s",
+			err.Error,
+			errors.New(utils.ToMarkdownCode("json", err.Body)),
+		)
 	}
 
 	return nil
