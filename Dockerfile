@@ -9,6 +9,7 @@ COPY . .
 
 # Set go proxy to https://goproxy.cn (open for vps in China Mainland)
 # RUN go env -w GOPROXY=https://goproxy.cn,direct
+
 ARG TARGETARCH
 ARG TARGETOS
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH GO111MODULE=on CGO_ENABLED=1
@@ -30,11 +31,10 @@ FROM node:18 AS frontend
 WORKDIR /app
 COPY ./app .
 
-RUN npm install -g pnpm && \
+RUN npm install -g pnpm@9.15.9 && \
     pnpm install && \
     pnpm run build && \
     rm -rf node_modules src
-
 
 FROM alpine
 
