@@ -9,15 +9,22 @@ import (
 )
 
 type ModelTag []string
+
 type MarketModel struct {
-	Id          string   `json:"id" mapstructure:"id" required:"true"`
-	Name        string   `json:"name" mapstructure:"name" required:"true"`
-	Description string   `json:"description" mapstructure:"description"`
-	Default     bool     `json:"default" mapstructure:"default"`
-	HighContext bool     `json:"high_context" mapstructure:"highcontext"`
-	Avatar      string   `json:"avatar" mapstructure:"avatar"`
-	Tag         ModelTag `json:"tag" mapstructure:"tag"`
+	Id              string   `json:"id" mapstructure:"id" required:"true"`
+	Name            string   `json:"name" mapstructure:"name" required:"true"`
+	Description     string   `json:"description" mapstructure:"description"`
+	Default         bool     `json:"default" mapstructure:"default"`
+	HighContext     bool     `json:"high_context" mapstructure:"highcontext"`
+	FunctionCalling bool     `json:"function_calling" mapstructure:"function_calling"`
+	VisionModel     bool     `json:"vision_model" mapstructure:"vision_model"`
+	ThinkingModel   bool     `json:"thinking_model" mapstructure:"thinking_model"`
+	ReverseModel    bool     `json:"reverse_model" mapstructure:"reverse_model"`
+	OCRModel        bool     `json:"ocr_model" mapstructure:"ocr_model"`
+	Avatar          string   `json:"avatar" mapstructure:"avatar"`
+	Tag             ModelTag `json:"tag" mapstructure:"tag"`
 }
+
 type MarketModelList []MarketModel
 
 type Market struct {
@@ -26,8 +33,14 @@ type Market struct {
 
 func NewMarket() *Market {
 	var models MarketModelList
+
 	if err := viper.UnmarshalKey("market", &models); err != nil {
-		globals.Warn(fmt.Sprintf("[market] read config error: %s, use default config", err.Error()))
+		globals.Warn(
+			fmt.Sprintf(
+				"[market] read config error: %s, use default config",
+				err.Error(),
+			),
+		)
 		models = MarketModelList{}
 	}
 
@@ -46,6 +59,7 @@ func (m *Market) GetModel(id string) *MarketModel {
 			return &model
 		}
 	}
+
 	return nil
 }
 
