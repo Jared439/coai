@@ -2,11 +2,10 @@ package auth
 
 import (
 	"chat/channel"
-	"database/sql"
-	"fmt"
-
 	"chat/globals"
 	"chat/utils"
+	"database/sql"
+	"fmt"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -19,7 +18,12 @@ const (
 )
 
 // CanEnableModel returns whether the model can be enabled (without subscription)
-func CanEnableModel(db *sql.DB, user *User, model string, messages []globals.Message) error {
+func CanEnableModel(
+	db *sql.DB,
+	user *User,
+	model string,
+	messages []globals.Message,
+) error {
 	isAuth := user != nil
 	isAdmin := isAuth && user.IsAdmin(db)
 
@@ -30,7 +34,8 @@ func CanEnableModel(db *sql.DB, user *User, model string, messages []globals.Mes
 	}
 
 	if !charge.IsBilling() {
-		// return if is the user is authenticated or anonymous is allowed for this model
+		// Return when the user is authenticated
+		// or anonymous access is allowed for this model.
 		if charge.SupportAnonymous() || isAuth {
 			return nil
 		}
@@ -42,23 +47,51 @@ func CanEnableModel(db *sql.DB, user *User, model string, messages []globals.Mes
 		return fmt.Errorf(ErrNotAuthenticated, model)
 	}
 
-	// Calculate estimated input cost
-	inputTokens := utils.NumTokensFromMessages(messages, model, false)
-	estimatedInputCost := float32(inputTokens) / 1000 * charge.GetInput()
+	// Calculate the estimated input cost.
+	// GPT-5.6 long-context pricing is included automatically.
+	inputTokens := utils.NumTokensFromMessages(
+		messages,
+		model,
+		false,
+	)
 
-	// Get user's current quota
+	estimatedInputCost := utils.CountInputQuotaForModel(
+		model,
+		charge,
+		inputTokens,
+	)
+
 	quota := user.GetQuota(db)
+
 	if quota < estimatedInputCost {
-		return fmt.Errorf(ErrEstimatedCost, model, estimatedInputCost, quota)
+		return fmt.Errorf(
+			ErrEstimatedCost,
+			model,
+			estimatedInputCost,
+			quota,
+		)
 	}
 
 	return nil
 }
 
-func CanEnableModelWithSubscription(db *sql.DB, cache *redis.Client, user *User, model string, messages []globals.Message) (canEnable error, usePlan bool) {
-	// use subscription quota first
-	if user != nil && HandleSubscriptionUsage(db, cache, user, model) {
+func CanEnableModelWithSubscription(
+	db *sql.DB,
+	cache *redis.Client,
+	user *User,
+	model string,
+	messages []globals.Message,
+) (canEnable error, usePlan bool) {
+	// Use subscription quota first.
+	if user != nil &&
+		HandleSubscriptionUsage(db, cache, user, model) {
 		return nil, true
 	}
-	return CanEnableModel(db, user, model, messages), false
+
+	return CanEnableModel(
+		db,
+		user,
+		model,
+		messages,
+	), false
 }
