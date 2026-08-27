@@ -63,4 +63,4 @@ VOLUME ["/config", "/logs", "/storage"]
 EXPOSE 8094
 
 # Run application
-CMD ["./chat"]
+CMD ["sh", "-c", "mkdir -p /logs /config /storage && touch /logs/chatnio.log && exec /chat"]
