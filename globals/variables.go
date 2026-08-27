@@ -57,7 +57,9 @@ func OriginIsAllowed(uri string) bool {
 }
 
 func OriginIsOpen(c *gin.Context) bool {
-	return strings.HasPrefix(c.Request.URL.Path, "/v1") || strings.HasPrefix(c.Request.URL.Path, "/dashboard") || strings.HasPrefix(c.Request.URL.Path, "/mj")
+	return strings.HasPrefix(c.Request.URL.Path, "/v1") ||
+		strings.HasPrefix(c.Request.URL.Path, "/dashboard") ||
+		strings.HasPrefix(c.Request.URL.Path, "/mj")
 }
 
 const (
@@ -149,7 +151,10 @@ const (
 )
 
 var OpenAIDalleModels = []string{
-	Dalle, Dalle2, Dalle3, GPTImage1,
+	Dalle,
+	Dalle2,
+	Dalle3,
+	GPTImage1,
 }
 
 var GoogleImagenModels = []string{
@@ -157,10 +162,30 @@ var GoogleImagenModels = []string{
 }
 
 var VisionModels = []string{
-	GPT4VisionPreview, GPT41106VisionPreview, GPT4Turbo, GPT4Turbo20240409, GPT4O, GPT4O20240513, // openai
-	GeminiProVision, Gemini15ProLatest, Gemini15FlashLatest, // gemini
-	Claude3,             // anthropic
-	ZhiPuChatGLM4Vision, // chatglm
+	// OpenAI
+	GPT4VisionPreview,
+	GPT41106VisionPreview,
+	GPT4Turbo,
+	GPT4Turbo20240409,
+	GPT4O,
+	GPT4O20240513,
+
+	// GPT-5.6
+	"gpt-5.6",
+	"gpt-5.6-sol",
+	"gpt-5.6-terra",
+	"gpt-5.6-luna",
+
+	// Gemini
+	GeminiProVision,
+	Gemini15ProLatest,
+	Gemini15FlashLatest,
+
+	// Anthropic
+	Claude3,
+
+	// ChatGLM
+	ZhiPuChatGLM4Vision,
 }
 
 var VisionSkipModels = []string{
@@ -182,7 +207,8 @@ func in(value string, slice []string) bool {
 
 func IsOpenAIDalleModel(model string) bool {
 	// using image generation api if model is in dalle models
-	return in(model, OpenAIDalleModels) && !strings.Contains(model, "gpt-4-dalle")
+	return in(model, OpenAIDalleModels) &&
+		!strings.Contains(model, "gpt-4-dalle")
 }
 
 func IsGoogleImagenModel(model string) bool {
@@ -191,7 +217,8 @@ func IsGoogleImagenModel(model string) bool {
 }
 
 func IsVisionModel(model string) bool {
-	return in(model, VisionModels) && !in(model, VisionSkipModels)
+	return in(model, VisionModels) &&
+		!in(model, VisionSkipModels)
 }
 
 func IsVideoModel(model string) bool {
