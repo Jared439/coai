@@ -36,7 +36,7 @@ var SearchSafeSearch int    // e.g. 0: None, 1: Moderation, 2: Strict
 
 func OriginIsAllowed(uri string) bool {
 	if len(AllowedOrigins) == 0 {
-		// if allowed origins is empty, allow all origins
+		// If allowed origins is empty, allow all origins.
 		return true
 	}
 
@@ -176,13 +176,17 @@ var VisionModels = []string{
 	"gpt-5.6-terra",
 	"gpt-5.6-luna",
 
-	// Gemini
+	// Google Gemini
 	GeminiProVision,
 	Gemini15ProLatest,
 	Gemini15FlashLatest,
 
-	// Anthropic
+	// Anthropic Claude
 	Claude3,
+	"claude-fable-5",
+	"claude-opus-5",
+	"claude-sonnet-5",
+	"claude-haiku-4-5",
 
 	// ChatGLM
 	ZhiPuChatGLM4Vision,
@@ -202,17 +206,18 @@ func in(value string, slice []string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
 func IsOpenAIDalleModel(model string) bool {
-	// using image generation api if model is in dalle models
+	// Use image generation API if the model is in DALL-E models.
 	return in(model, OpenAIDalleModels) &&
 		!strings.Contains(model, "gpt-4-dalle")
 }
 
 func IsGoogleImagenModel(model string) bool {
-	// using image generation api if model is in imagen models
+	// Use Google Imagen API if the model is in Imagen models.
 	return in(model, GoogleImagenModels)
 }
 
