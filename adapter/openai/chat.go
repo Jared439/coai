@@ -46,8 +46,9 @@ func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) 
 
 	messages := formatMessages(props)
 
-	// o1, o3, gpt-5 compatibility
-	isNewModel := len(props.Model) >= 2 && (props.Model[:2] == "o1" || props.Model[:2] == "o3") || strings.HasPrefix(props.Model, "gpt-5")
+	// Reasoning models use max_completion_tokens instead of max_tokens.
+	isAstraModel := props.Model == "gpt-6-astra" || strings.HasPrefix(props.Model, "gpt-6-astra-")
+	isNewModel := len(props.Model) >= 2 && (props.Model[:2] == "o1" || props.Model[:2] == "o3") || strings.HasPrefix(props.Model, "gpt-5") || isAstraModel
 
 	var temperature *float32
 	if isNewModel {
@@ -67,6 +68,12 @@ func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) 
 		TopP:             props.TopP,
 		Tools:            props.Tools,
 		ToolChoice:       props.ToolChoice,
+	}
+
+	// Astra rejects these sampling parameters even when set to default values.
+	if isAstraModel {
+		request.Temperature = nil
+		request.TopP = nil
 	}
 
 	if isNewModel {
