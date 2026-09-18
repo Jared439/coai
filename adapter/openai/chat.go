@@ -29,13 +29,11 @@ func (c *ChatInstance) GetLatestPrompt(props *adaptercommon.ChatProps) string {
 	if len(props.Message) == 0 {
 		return ""
 	}
-
 	return props.Message[len(props.Message)-1].Content
 }
 
 func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) interface{} {
 	if props.Model == globals.GPT3TurboInstruct {
-		// for completions
 		return CompletionRequest{
 			Model:    props.Model,
 			Prompt:   c.GetCompletionPrompt(props.Message),
@@ -47,8 +45,13 @@ func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) 
 	messages := formatMessages(props)
 
 	// Reasoning models use max_completion_tokens instead of max_tokens.
-	isAstraModel := props.Model == "gpt-6-astra" || strings.HasPrefix(props.Model, "gpt-6-astra-")
-	isNewModel := len(props.Model) >= 2 && (props.Model[:2] == "o1" || props.Model[:2] == "o3") || strings.HasPrefix(props.Model, "gpt-5") || isAstraModel
+	isAstraModel := props.Model == "gpt-6-astra" ||
+		strings.HasPrefix(props.Model, "gpt-6-astra-")
+
+	isNewModel := (len(props.Model) >= 2 &&
+		(props.Model[:2] == "o1" || props.Model[:2] == "o3")) ||
+		strings.HasPrefix(props.Model, "gpt-5") ||
+		isAstraModel
 
 	var temperature *float32
 	if isNewModel {
@@ -70,7 +73,7 @@ func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) 
 		ToolChoice:       props.ToolChoice,
 	}
 
-	// Astra rejects these sampling parameters even when set to default values.
+	// Omit unsupported sampling parameters for Astra.
 	if isAstraModel {
 		request.Temperature = nil
 		request.TopP = nil
@@ -81,10 +84,11 @@ func (c *ChatInstance) GetChatBody(props *adaptercommon.ChatProps, stream bool) 
 	} else {
 		request.MaxToken = props.MaxTokens
 	}
+
 	return request
 }
 
-// CreateChatRequest is the native http request body for openai
+// CreateChatRequest is the native http request body for openai.
 func (c *ChatInstance) CreateChatRequest(props *adaptercommon.ChatProps) (string, error) {
 	if globals.IsOpenAIDalleModel(props.Model) {
 		return c.CreateImage(props)
@@ -107,17 +111,16 @@ func (c *ChatInstance) CreateChatRequest(props *adaptercommon.ChatProps) (string
 	} else if data.Error.Message != "" {
 		return "", fmt.Errorf("openai error: %s", data.Error.Message)
 	}
+
 	return data.Choices[0].Message.Content, nil
 }
 
 func hideRequestId(message string) string {
-	// xxx (request id: 2024020311120561344953f0xfh0TX)
-
 	exp := regexp.MustCompile(`\(request id: [a-zA-Z0-9]+\)`)
 	return exp.ReplaceAllString(message, "")
 }
 
-// CreateStreamChatRequest is the stream response body for openai
+// CreateStreamChatRequest is the stream response body for openai.
 func (c *ChatInstance) CreateStreamChatRequest(props *adaptercommon.ChatProps, callback globals.Hook) error {
 	if globals.IsOpenAIDalleModel(props.Model) {
 		if url, err := c.CreateImage(props); err != nil {
